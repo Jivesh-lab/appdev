@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'student/student_screens.dart';
+import 'student/student_signup_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -35,6 +36,7 @@ class ClassPulseApp extends StatefulWidget {
 
 class _ClassPulseAppState extends State<ClassPulseApp> {
   bool _hasJoined = false;
+  bool _isSignedUp = false;
   String _classCode = '';
   int _selectedIndex = 0;
   String _theme = 'light';
@@ -89,8 +91,21 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
     });
   }
 
+  void _completeSignup() {
+    setState(() {
+      _isSignedUp = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_isSignedUp) {
+      return StudentSignupScreen(
+        onSignupSuccess: _completeSignup,
+        onNavigateToLogin: _completeSignup, // For now, login just skips signup
+      );
+    }
+
     if (!_hasJoined) {
       return JoinClassScreen(onJoin: _joinClass);
     }

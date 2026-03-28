@@ -1729,7 +1729,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSettingsTile(
                     icon: Icons.brightness_7,
                     title: 'Theme',
-                    subtitle: (widget.theme ?? 'light')[0].toUpperCase() + (widget.theme ?? 'light').substring(1),
+                    subtitle: widget.theme[0].toUpperCase() + widget.theme.substring(1),
                     onTap: () => _showThemeBottomSheet(context),
                   ),
                   _buildToggleTile(
@@ -1742,7 +1742,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildSettingsTile(
                     icon: Icons.language,
                     title: 'Language',
-                    subtitle: widget.language ?? 'English (US)',
+                    subtitle: widget.language,
                     onTap: () => _showLanguageBottomSheet(context),
                   ),
                   const SizedBox(height: 24),
@@ -2031,11 +2031,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
-                          color: (widget.theme ?? 'light') == value
+                          color: widget.theme == value
                               ? const Color(0xFF2D5BFF).withOpacity(0.1)
                               : Colors.white,
                           border: Border.all(
-                              color: (widget.theme ?? 'light') == value
+                              color: widget.theme == value
                                   ? const Color(0xFF2D5BFF)
                                   : const Color(0xFFECEFF1)),
                           borderRadius: BorderRadius.circular(12)),
@@ -2047,7 +2047,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     color: Color(0xFF2D5BFF),
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600)),
-                            if ((widget.theme ?? 'light') == value)
+                            if (widget.theme == value)
                               const Icon(Icons.check_circle,
                                   color: Color(0xFF2D5BFF))
                           ])))));
@@ -2093,11 +2093,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                       decoration: BoxDecoration(
-                          color: (widget.language ?? 'English (US)') == value
+                          color: widget.language == value
                               ? const Color(0xFF2D5BFF).withOpacity(0.1)
                               : Colors.white,
                           border: Border.all(
-                              color: (widget.language ?? 'English (US)') == value
+                              color: widget.language == value
                                   ? const Color(0xFF2D5BFF)
                                   : const Color(0xFFECEFF1)),
                           borderRadius: BorderRadius.circular(12)),
@@ -2109,7 +2109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     color: Color(0xFF2D5BFF),
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600)),
-                            if ((widget.language ?? 'English (US)') == value)
+                            if (widget.language == value)
                               const Icon(Icons.check_circle,
                                   color: Color(0xFF2D5BFF))
                           ])))));
