@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import 'session_summary_screen.dart';
 
 /// Teacher Dashboard - Home screen for teacher mobile app
 class TeacherDashboard extends StatefulWidget {
@@ -1284,45 +1285,66 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
     if (!mounted) return;
     setState(() => _isEndingSession = false);
 
-    // Show summary dialog then pop
-    await showDialog(
+    if (summary != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SessionSummaryScreen(summary: summary),
+        ),
+      );
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  void _showThresholdDialog() {
+    int currentThreshold = 40;
+    showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Color(0xFF4CAF50)),
-            SizedBox(width: 8),
-            Text('Session Ended!', style: TextStyle(fontWeight: FontWeight.w700)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (summary != null) ...[
-              _SummaryRow(icon: Icons.people, label: 'Students', value: '${summary['totalStudents'] ?? 0}'),
-              _SummaryRow(icon: Icons.thumb_up, label: 'Got It', value: '${summary['gotItCount'] ?? 0}', color: const Color(0xFF4CAF50)),
-              _SummaryRow(icon: Icons.remove_circle_outline, label: 'Sort Of', value: '${summary['sortOfCount'] ?? 0}', color: const Color(0xFFFFC107)),
-              _SummaryRow(icon: Icons.cancel, label: 'Lost', value: '${summary['lostCount'] ?? 0}', color: const Color(0xFFEF5350)),
-              _SummaryRow(icon: Icons.help_outline, label: 'Questions', value: '${summary['questionCount'] ?? 0}'),
-              _SummaryRow(icon: Icons.timer, label: 'Duration', value: '${summary['durationMinutes'] ?? 0} min'),
-            ] else
-              const Text('Session ended successfully.'),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2D5BFF)),
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context);
-            },
-            child: const Text('Done', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Alert Threshold Configuration', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Alert me when $currentThreshold% students are lost.'),
+                  Slider(
+                    value: currentThreshold.toDouble(),
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    activeColor: const Color(0xFF2D5BFF),
+                    onChanged: (val) {
+                      setDialogState(() {
+                        currentThreshold = val.toInt();
+                      });
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await apiService.updateThreshold(widget.session.sessionCode, currentThreshold);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Threshold updated')));
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2D5BFF)),
+                  child: const Text('Save', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1393,6 +1415,10 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
                 ),
               ),
             ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white),
+            onPressed: _showThresholdDialog,
           ),
         ],
       ),
