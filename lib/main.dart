@@ -49,12 +49,6 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
-  void _handleLogout() {
-    setState(() {
-      _currentUser = null;
-      _userRole = null;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +133,6 @@ class ClassPulseApp extends StatefulWidget {
 class _ClassPulseAppState extends State<ClassPulseApp> {
   // Student Mode State
   bool _hasJoined = false;
-  bool _isSignedUp = false;
   String _classCode = '';
   String? _sessionCode;
   int _selectedIndex = 0;
@@ -204,17 +197,6 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
     setState(() {
       _selectedClass = classModel;
     });
-  }
-
-  void _closeTeacherSession() {
-    setState(() {
-      _selectedClass = null;
-    });
-  }
-
-  void _handleLogout() {
-    // Navigate up to MyApp and call logout there
-    Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
   }
 
   @override

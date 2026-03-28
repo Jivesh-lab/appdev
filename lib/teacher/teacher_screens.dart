@@ -1289,7 +1289,7 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => SessionSummaryScreen(summary: summary),
+          builder: (context) => SessionSummaryScreen(sessionCode: widget.session.sessionCode),
         ),
       );
     } else {
