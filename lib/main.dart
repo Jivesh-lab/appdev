@@ -8,11 +8,20 @@ import 'auth/auth_screens.dart';
 import 'models/models.dart';
 
 void main() {
-  runApp(const MyApp());
+  // Parse session code from URL for deep linking (for join links)
+  String? sessionCodeFromUrl;
+  if (kIsWeb) {
+    final queryParams = Uri.base.queryParameters;
+    sessionCodeFromUrl = queryParams['code'];
+  }
+  
+  runApp(MyApp(initialSessionCode: sessionCodeFromUrl));
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  final String? initialSessionCode;
+  
+  const MyApp({super.key, this.initialSessionCode});
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -75,9 +84,17 @@ class _MyAppState extends State<MyApp> {
         fontFamily: 'Poppins',
       ),
       themeMode: brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
-      home: _currentUser == null
-          ? AuthScreen(onLoginSuccess: _handleLogin)
-          : appRouter(context, _currentUser!, _userRole!),
+      home: widget.initialSessionCode != null
+          ? ClassPulseApp(
+              onThemeChanged: _updateTheme,
+              currentTheme: _theme,
+              currentUser: null,
+              isTeacher: false,
+              sessionCode: widget.initialSessionCode, // Direct to QuickJoinScreen
+            )
+          : (_currentUser == null
+              ? AuthScreen(onLoginSuccess: _handleLogin)
+              : appRouter(context, _currentUser!, _userRole!)),
     );
   }
 }
@@ -99,6 +116,7 @@ class ClassPulseApp extends StatefulWidget {
   final bool isTeacher;
   final User? currentUser;
   final VoidCallback? onLogoutRequest;
+  final String? sessionCode; // From QR/Link
 
   const ClassPulseApp({
     super.key,
@@ -107,6 +125,7 @@ class ClassPulseApp extends StatefulWidget {
     this.isTeacher = false,
     this.currentUser,
     this.onLogoutRequest,
+    this.sessionCode,
   });
 
   @override
@@ -118,6 +137,7 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
   bool _hasJoined = false;
   bool _isSignedUp = false;
   String _classCode = '';
+  String? _sessionCode;
   int _selectedIndex = 0;
   bool _notificationsEnabled = true;
   String _language = 'English (US)';
@@ -126,6 +146,15 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
 
   // Teacher Mode State
   ClassModel? _selectedClass;
+
+  @override
+  void initState() {
+    super.initState();
+    // If coming from QR/link, set session code directly
+    if (widget.sessionCode != null) {
+      _sessionCode = widget.sessionCode;
+    }
+  }
 
   void _joinClass(String code) {
     setState(() {
@@ -167,23 +196,6 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
     });
   }
 
-<<<<<<< HEAD
-  void _completeSignup() {
-    setState(() {
-      _isSignedUp = true;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isSignedUp) {
-      return StudentSignupScreen(
-        onSignupSuccess: _completeSignup,
-        onNavigateToLogin: _completeSignup, // For now, login just skips signup
-      );
-    }
-
-=======
   void _selectTeacherClass(ClassModel classModel) {
     setState(() {
       _selectedClass = classModel;
@@ -220,8 +232,16 @@ class _ClassPulseAppState extends State<ClassPulseApp> {
     }
 
     // Student Web/Mobile UI
->>>>>>> a7e0543 (added teacher module, services, models and fixes)
     if (!_hasJoined) {
+      // If coming from QR/link with session code, show quick join screen
+      if (_sessionCode != null && _sessionCode!.isNotEmpty) {
+        return QuickJoinScreen(
+          sessionCode: _sessionCode!,
+          onJoin: _joinClass,
+          language: _language,
+        );
+      }
+      // Otherwise show regular join screen
       return JoinClassScreen(onJoin: _joinClass, language: _language);
     }
 

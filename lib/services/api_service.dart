@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import '../models/models.dart';
 
 /// API Service for ClassPulse backend communication
 class ApiService {
   static const String baseUrl = 'http://localhost:8000/api'; 
-  static const String joinLinkBase = 'https://classpulse.app/join';
   
   // Store active sessions (for demo - replace with database)
   final Set<String> _activeSessions = {};
@@ -22,9 +22,24 @@ class ApiService {
     return code;
   }
   
-  // Generate join link for session code
+  // Generate join link for session code - uses current app URL for web, production URL for deployment
   String _generateJoinLink(String sessionCode) {
-    return '$joinLinkBase?code=$sessionCode';
+    if (kIsWeb) {
+      // On web, use the current document's URL (e.g., http://localhost:52345/)
+      // This ensures the link opens in the same browser instance
+      try {
+        // Get the current origin (protocol + host)
+        final uri = Uri.base;
+        final baseUrl = '${uri.scheme}://${uri.host}${uri.port != 80 && uri.port != 443 ? ':${uri.port}' : ''}';
+        return '$baseUrl?code=$sessionCode';
+      } catch (e) {
+        // Fallback if web URL parsing fails
+        return 'http://localhost:54330?code=$sessionCode';
+      }
+    } else {
+      // For non-web (mobile/desktop), use production domain
+      return 'https://classpulse.app?code=$sessionCode';
+    }
   }
   
   /// Start a new session - generates code, link, and returns session object
@@ -32,6 +47,9 @@ class ApiService {
     try {
       final sessionCode = _generateSessionCode();
       final joinLink = _generateJoinLink(sessionCode);
+      
+      print('🚀 Creating session: $sessionCode');
+      print('📊 Sending data: classCode=$classCode, className=$className, teacherId=$teacherId');
       
       // Call backend to create session
       final response = await http.post(
@@ -46,9 +64,13 @@ class ApiService {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode == 201) {
+      print('📡 Response status: ${response.statusCode}');
+      print('📨 Response body: ${response.body}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         
+        print('✅ Session created successfully: $sessionCode');
         return Session(
           id: responseData['session']['id'],
           classCode: classCode,
@@ -63,10 +85,11 @@ class ApiService {
           isLobbyPhase: true,
         );
       } else {
-        throw Exception('Failed to create session');
+        print('❌ Backend error (${response.statusCode}): ${response.body}');
+        throw Exception('Failed to create session: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      print('Error starting session: $e');
+      print('❌ Error starting session: $e');
       rethrow;
     }
   }
@@ -93,6 +116,14 @@ class ApiService {
         final sessionData = responseData['session'];
         print('📊 Session status - Code: $sessionCode, Students: ${sessionData['studentCount']}');
         
+        // Handle isActive as either boolean or integer (SQLite returns 0/1)
+        bool isActive = true;
+        if (sessionData['isActive'] is int) {
+          isActive = sessionData['isActive'] == 1;
+        } else if (sessionData['isActive'] is bool) {
+          isActive = sessionData['isActive'];
+        }
+        
         return Session(
           id: sessionData['id'],
           classCode: 'DEFAULT',
@@ -102,7 +133,7 @@ class ApiService {
           joinLink: sessionData['joinLink'],
           startTime: DateTime.now(),
           studentCount: sessionData['studentCount'] ?? 0,
-          isActive: sessionData['isActive'] ?? true,
+          isActive: isActive,
           topic: 'Live Session',
           isLobbyPhase: true,
         );

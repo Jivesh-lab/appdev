@@ -302,6 +302,283 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
   }
 }
 
+// ==================== QUICK JOIN SCREEN (From QR/Link) ====================
+
+class QuickJoinScreen extends StatefulWidget {
+  final String sessionCode;
+  final Function(String) onJoin;
+  final String language;
+
+  const QuickJoinScreen({
+    super.key,
+    required this.sessionCode,
+    required this.onJoin,
+    this.language = 'English (US)',
+  });
+
+  @override
+  State<QuickJoinScreen> createState() => _QuickJoinScreenState();
+}
+
+class _QuickJoinScreenState extends State<QuickJoinScreen> {
+  bool _isLoading = false;
+  String _errorMessage = '';
+  String? _sessionName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionInfo();
+  }
+
+  void _loadSessionInfo() async {
+    try {
+      final session = await ApiService().getSessionByCode(widget.sessionCode);
+      if (mounted && session != null) {
+        setState(() {
+          _sessionName = session.className;
+        });
+      }
+    } catch (e) {
+      print('Error loading session: $e');
+    }
+  }
+
+  void _quickJoin() {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    // Direct join without asking for details
+    ApiService().joinSessionAsStudent(
+      widget.sessionCode,
+      studentName: 'Student',
+    ).then((studentCount) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+
+        if (studentCount != null) {
+          widget.onJoin(widget.sessionCode);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Joined! ($studentCount in class)'),
+              backgroundColor: const Color(0xFF4CAF50),
+            ),
+          );
+        } else {
+          setState(() => _errorMessage = 'Session not found or expired');
+        }
+      }
+    }).catchError((error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Connection error. Try again.';
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF1F1F47),
+            const Color(0xFF2D1B4E),
+            const Color(0xFF1A1A3A),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.5, 1.0],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Logo
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2D5BFF), Color(0xFF4A90E2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2D5BFF).withOpacity(0.2),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.school_rounded,
+                  size: 50,
+                  color: Colors.white,
+                ),
+              ),
+
+              const SizedBox(height: 32),
+
+              // Title
+              const Text(
+                'ClassPulse',
+                style: TextStyle(
+                  color: Color(0xFF2D5BFF),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Session Code Display
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2D5BFF).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF2D5BFF),
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'Session Code',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      widget.sessionCode,
+                      style: const TextStyle(
+                        color: Color(0xFF2D5BFF),
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (_sessionName != null) ...[
+                const SizedBox(height: 24),
+                Text(
+                  _sessionName!,
+                  style: const TextStyle(
+                    color: Color(0xFF2D5BFF),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+
+              const SizedBox(height: 32),
+
+              // Error Message
+              if (_errorMessage.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF5350).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFFEF5350),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Color(0xFFEF5350),
+                        size: 18,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage,
+                          style: const TextStyle(
+                            color: Color(0xFFEF5350),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 40),
+
+              // Join Button
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    elevation: 8,
+                    shadowColor: const Color(0xFF4CAF50).withOpacity(0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    disabledBackgroundColor: Colors.grey[300],
+                  ),
+                  onPressed: _isLoading ? null : _quickJoin,
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Join Session',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 60),
+            ],
+          ),
+        ),
+      ),
+    ),
+    );
+  }
+}
+
 class LiveSessionScreen extends StatefulWidget {
   final String classCode;
   final VoidCallback onLeave;
