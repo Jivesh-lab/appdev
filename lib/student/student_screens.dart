@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'localization.dart';
+import '../services/api_service.dart';
 
 class JoinClassScreen extends StatefulWidget {
   final Function(String) onJoin;
+  final String language;
 
-  const JoinClassScreen({super.key, required this.onJoin});
+  const JoinClassScreen({super.key, required this.onJoin, this.language = 'English (US)'});
 
   @override
   State<JoinClassScreen> createState() => _JoinClassScreenState();
@@ -31,25 +34,42 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
       _errorMessage = '';
     });
 
-    // Simulate network delay
-    Future.delayed(const Duration(seconds: 1), () {
+    // Call API to join session
+    ApiService().joinSessionAsStudent(
+      _codeController.text,
+      studentName: 'Student',
+    ).then((studentCount) {
       if (mounted) {
         setState(() => _isLoading = false);
         
-        // Allow any code for join (in production, validate with backend)
-        if (_codeController.text.isNotEmpty) {
+        if (studentCount != null) {
+          // Successfully joined
           widget.onJoin(_codeController.text);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Joined! ($studentCount students in session)'),
+              backgroundColor: const Color(0xFF4CAF50),
+            ),
+          );
         } else {
-          setState(() => _errorMessage = 'Invalid class code');
+          setState(() => _errorMessage = 'Invalid or expired class code');
         }
+      }
+    }).catchError((error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to join: ${error.toString()}';
+        });
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -285,11 +305,13 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
 class LiveSessionScreen extends StatefulWidget {
   final String classCode;
   final VoidCallback onLeave;
+  final String language;
 
   const LiveSessionScreen({
     super.key,
     required this.classCode,
     required this.onLeave,
+    this.language = 'English (US)',
   });
 
   @override
@@ -306,6 +328,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
   late AnimationController _animationController;
 
   late ScrollController _scrollController;
+
+  // Camera window state
+  Offset _cameraPosition = const Offset(10, 10);
+  Size _cameraSize = const Size(280, 210);
+  bool _isCameraMinimized = false;
 
   final String studentName = "Jimmy Kumar";
   final String studentEmail = "jimmy.kumar@school.edu";
@@ -369,8 +396,11 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+    return Stack(
+      children: [
+        // Main Scaffold
+        Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         controller: _scrollController,
         slivers: [
@@ -700,6 +730,145 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
           ],
         ),
       ),
+    ),
+        
+        // Floating Camera Window
+        if (isCameraOn)
+          Positioned(
+            left: _cameraPosition.dx,
+            top: _cameraPosition.dy,
+            child: _buildFloatingCameraWindow(context),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFloatingCameraWindow(BuildContext context) {
+    return GestureDetector(
+      onPanUpdate: (details) {
+        setState(() {
+          _cameraPosition = Offset(
+            _cameraPosition.dx + details.delta.dx,
+            _cameraPosition.dy + details.delta.dy,
+          );
+        });
+      },
+      child: Container(
+        width: _isCameraMinimized ? 200 : _cameraSize.width,
+        height: _isCameraMinimized ? 50 : _cameraSize.height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF2D5BFF), width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              // Camera feed background
+              Container(
+                color: Colors.black87,
+                child: _isCameraMinimized
+                    ? null
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: const Color(0xFF2D5BFF).withOpacity(0.2),
+                            ),
+                            child: const Icon(
+                              Icons.videocam,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Camera',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              // Controls header
+              Container(
+                color: Colors.black54,
+                height: 40,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        'Your Camera',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        // Minimize/Maximize button
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _isCameraMinimized = !_isCameraMinimized;
+                            });
+                          },
+                          child: Container(
+                            color: Colors.transparent,
+                            padding: const EdgeInsets.all(8),
+                            child: Icon(
+                              _isCameraMinimized
+                                  ? Icons.unfold_more
+                                  : Icons.unfold_less,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                        // Close button
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              isCameraOn = false;
+                            });
+                          },
+                          child: Container(
+                            color: Colors.transparent,
+                            padding: const EdgeInsets.all(8),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -850,13 +1019,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
 class StudentProfileScreen extends StatelessWidget {
   final VoidCallback onBack;
+  final String language;
 
-  const StudentProfileScreen({super.key, required this.onBack});
+  const StudentProfileScreen({super.key, required this.onBack, this.language = 'English (US)'});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
           // Enhanced Gradient Header with Profile
@@ -1484,7 +1654,9 @@ class StudentProfileScreen extends StatelessWidget {
 // ==================== ASK QUESTION SCREEN ====================
 
 class AskQuestionScreen extends StatefulWidget {
-  const AskQuestionScreen({super.key});
+  final String language;
+
+  const AskQuestionScreen({super.key, this.language = 'English (US)'});
 
   @override
   State<AskQuestionScreen> createState() => _AskQuestionScreenState();
@@ -1502,14 +1674,14 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: const Color(0xFF2D5BFF),
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          'Ask a Question',
-          style: TextStyle(
+        title: Text(
+          AppStrings.get(widget.language, 'ask_question'),
+          style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
             fontSize: 20,
@@ -1663,7 +1835,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FE),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -1706,8 +1878,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         child: const Icon(Icons.settings, size: 40, color: Colors.white),
                       ),
                       const SizedBox(height: 12),
-                      const Text('Settings',
-                          style: TextStyle(
+                      Text(AppStrings.get(widget.language, 'settings'),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 24,
                             fontWeight: FontWeight.w700,
@@ -1724,46 +1896,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionTitle('App Settings'),
+                  _buildSectionTitle(AppStrings.get(widget.language, 'app_settings')),
                   const SizedBox(height: 12),
                   _buildSettingsTile(
                     icon: Icons.brightness_7,
-                    title: 'Theme',
-                    subtitle: widget.theme[0].toUpperCase() + widget.theme.substring(1),
+                    title: AppStrings.get(widget.language, 'theme'),
+                    subtitle: (widget.theme ?? 'light')[0].toUpperCase() + (widget.theme ?? 'light').substring(1),
                     onTap: () => _showThemeBottomSheet(context),
                   ),
                   _buildToggleTile(
                     icon: Icons.notifications,
-                    title: 'Notifications',
+                    title: AppStrings.get(widget.language, 'notifications'),
                     subtitle: widget.notificationsEnabled ? 'Enabled' : 'Disabled',
                     value: widget.notificationsEnabled,
                     onChanged: widget.onNotificationsChanged,
                   ),
                   _buildSettingsTile(
                     icon: Icons.language,
-                    title: 'Language',
-                    subtitle: widget.language,
+                    title: AppStrings.get(widget.language, 'language'),
+                    subtitle: widget.language ?? 'English (US)',
                     onTap: () => _showLanguageBottomSheet(context),
                   ),
                   const SizedBox(height: 24),
-                  _buildSectionTitle('Account Settings'),
+                  _buildSectionTitle(AppStrings.get(widget.language, 'account_settings')),
                   const SizedBox(height: 12),
                   _buildSettingsTile(
                     icon: Icons.person,
-                    title: 'Profile Information',
-                    subtitle: 'Edit your profile details',
+                    title: AppStrings.get(widget.language, 'profile_information'),
+                    subtitle: AppStrings.get(widget.language, 'edit_profile_details'),
                     onTap: () => _showProfileDialog(context),
                   ),
                   _buildSettingsTile(
                     icon: Icons.lock,
-                    title: 'Change Password',
-                    subtitle: 'Update your password',
+                    title: AppStrings.get(widget.language, 'change_password'),
+                    subtitle: AppStrings.get(widget.language, 'update_password'),
                     onTap: () => _showPasswordDialog(context),
                   ),
                   _buildToggleTile(
                     icon: Icons.security,
-                    title: 'Two-Factor Authentication',
-                    subtitle: widget.twoFactorEnabled ? 'Enabled' : 'Disabled',
+                    title: AppStrings.get(widget.language, 'two_factor'),
+                    subtitle: widget.twoFactorEnabled ? AppStrings.get(widget.language, 'enabled') : AppStrings.get(widget.language, 'disabled'),
                     value: widget.twoFactorEnabled,
                     onChanged: widget.onTwoFactorChanged,
                   ),
@@ -2004,8 +2176,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Choose Theme',
-                      style: TextStyle(
+                  Text(AppStrings.get(widget.language, 'choose_theme'),
+                      style: const TextStyle(
                           color: Color(0xFF2D5BFF), fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 20),
                   _themeOption(context, 'Light', 'light'),
@@ -2065,8 +2237,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Choose Language',
-                      style: TextStyle(
+                  Text(AppStrings.get(widget.language, 'choose_language'),
+                      style: const TextStyle(
                           color: Color(0xFF2D5BFF), fontSize: 18, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 20),
                   _languageOption(context, 'English (US)', 'English (US)'),
