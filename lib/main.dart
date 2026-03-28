@@ -6,8 +6,12 @@ import 'student/localization.dart';
 import 'teacher/teacher_screens.dart';
 import 'auth/auth_screens.dart';
 import 'models/models.dart';
+import 'services/api_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await apiService.initialize();
+
   // Parse session code from URL for deep linking (for join links)
   String? sessionCodeFromUrl;
   if (kIsWeb) {

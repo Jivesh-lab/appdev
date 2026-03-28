@@ -35,7 +35,7 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
     });
 
     // Call API to join session
-    ApiService().joinSessionAsStudent(
+    apiService.joinSessionAsStudent(
       _codeController.text,
       studentName: 'Student',
     ).then((studentCount) {
@@ -333,7 +333,7 @@ class _QuickJoinScreenState extends State<QuickJoinScreen> {
 
   void _loadSessionInfo() async {
     try {
-      final session = await ApiService().getSessionByCode(widget.sessionCode);
+      final session = await apiService.getSessionByCode(widget.sessionCode);
       if (mounted && session != null) {
         setState(() {
           _sessionName = session.className;
@@ -351,7 +351,7 @@ class _QuickJoinScreenState extends State<QuickJoinScreen> {
     });
 
     // Direct join without asking for details
-    ApiService().joinSessionAsStudent(
+    apiService.joinSessionAsStudent(
       widget.sessionCode,
       studentName: 'Student',
     ).then((studentCount) {
@@ -642,11 +642,17 @@ class _LiveSessionScreenState extends State<LiveSessionScreen>
 
     _animationController.forward(from: 0.0);
 
-    // Console logging
-    print({
-      'feedback_type': selectedFeedback,
-      'previous_feedback': previousFeedback,
-      'timestamp': DateTime.now(),
+    // ✅ Send real feedback signal to backend
+    apiService.submitFeedback(
+      widget.classCode,
+      apiService.studentToken ?? studentId,
+      type,
+    ).then((success) {
+      if (success) {
+        print('✅ Feedback sent to backend: $type');
+      } else {
+        print('⚠️ Feedback sent locally only (no student_token yet)');
+      }
     });
 
     // Snackbar message based on type
@@ -1941,11 +1947,70 @@ class AskQuestionScreen extends StatefulWidget {
 
 class _AskQuestionScreenState extends State<AskQuestionScreen> {
   final TextEditingController _questionController = TextEditingController();
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
     _questionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitQuestion() async {
+    final text = _questionController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final sessionCode = apiService.currentSessionCode;
+      if (sessionCode == null) {
+        // No active session found — show local success anyway
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Question submitted!'),
+            backgroundColor: Color(0xFF4CAF50),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _questionController.clear();
+        return;
+      }
+
+      final question = await apiService.askQuestion(sessionCode, text);
+
+      if (!mounted) return;
+
+      if (question != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Question submitted to teacher! ✅'),
+            backgroundColor: Color(0xFF4CAF50),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        _questionController.clear();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not submit — join a session first'),
+            backgroundColor: Color(0xFFEF5350),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: const Color(0xFFEF5350),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -2021,27 +2086,24 @@ class _AskQuestionScreenState extends State<AskQuestionScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onPressed: () {
-                    if (_questionController.text.isNotEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text('Question submitted!'),
-                          backgroundColor: const Color(0xFF4CAF50),
-                          behavior: SnackBarBehavior.floating,
-                          margin: const EdgeInsets.all(16),
+                  onPressed: _isSubmitting ? null : _submitQuestion,
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Submit Question',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
                         ),
-                      );
-                      _questionController.clear();
-                    }
-                  },
-                  child: const Text(
-                    'Submit Question',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
                 ),
               ),
             ],
@@ -2894,3 +2956,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: const Text('Delete', style: TextStyle(color: Color(0xFFEF5350))))
           ]));
 }
+

@@ -726,7 +726,7 @@ class _SessionLobbyScreenState extends State<SessionLobbyScreen> {
   late Session _session;
   int _studentCount = 0;
   Timer? _pollTimer;
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = apiService;
 
   @override
   void initState() {
@@ -739,7 +739,7 @@ class _SessionLobbyScreenState extends State<SessionLobbyScreen> {
       final updatedSession = await _apiService.getSessionByCode(_session.sessionCode);
       if (mounted && updatedSession != null) {
         if (_studentCount != updatedSession.studentCount) {
-          print('🔄 Student count updated: $_studentCount → ${updatedSession.studentCount}');
+          print('?? Student count updated: $_studentCount ? ${updatedSession.studentCount}');
         }
         setState(() {
           _studentCount = updatedSession.studentCount;
@@ -1209,6 +1209,122 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
   bool _isCameraOn = true;
   bool _isMicOn = true;
   bool _isScreenSharing = false;
+  bool _isEndingSession = false;
+
+  // Live aggregate state
+  int _gotIt = 0;
+  int _sortOf = 0;
+  int _lost = 0;
+  int _total = 0;
+  bool _alert = false;
+  List<Question> _questions = [];
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startPolling();
+  }
+
+  void _startPolling() {
+    // Poll aggregate + questions every 3 seconds
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      final agg = await apiService.getAggregate(widget.session.sessionCode);
+      if (mounted && agg != null) {
+        setState(() {
+          _gotIt = agg['got_it'] ?? 0;
+          _sortOf = agg['sort_of'] ?? 0;
+          _lost = agg['lost'] ?? 0;
+          _total = agg['total'] ?? 0;
+          _alert = agg['alert'] == true;
+        });
+      }
+
+      final questions = await apiService.getQuestions(widget.session.sessionCode);
+      if (mounted) {
+        setState(() => _questions = questions);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _endClass() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('End Class?'),
+        content: const Text(
+          'Are you sure you want to end the class? All students will be disconnected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('End Class', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isEndingSession = true);
+    _pollTimer?.cancel();
+
+    final summary = await apiService.endSession(widget.session.sessionCode);
+
+    if (!mounted) return;
+    setState(() => _isEndingSession = false);
+
+    // Show summary dialog then pop
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Color(0xFF4CAF50)),
+            SizedBox(width: 8),
+            Text('Session Ended!', style: TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (summary != null) ...[
+              _SummaryRow(icon: Icons.people, label: 'Students', value: '${summary['totalStudents'] ?? 0}'),
+              _SummaryRow(icon: Icons.thumb_up, label: 'Got It', value: '${summary['gotItCount'] ?? 0}', color: const Color(0xFF4CAF50)),
+              _SummaryRow(icon: Icons.remove_circle_outline, label: 'Sort Of', value: '${summary['sortOfCount'] ?? 0}', color: const Color(0xFFFFC107)),
+              _SummaryRow(icon: Icons.cancel, label: 'Lost', value: '${summary['lostCount'] ?? 0}', color: const Color(0xFFEF5350)),
+              _SummaryRow(icon: Icons.help_outline, label: 'Questions', value: '${summary['questionCount'] ?? 0}'),
+              _SummaryRow(icon: Icons.timer, label: 'Duration', value: '${summary['durationMinutes'] ?? 0} min'),
+            ] else
+              const Text('Session ended successfully.'),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2D5BFF)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            child: const Text('Done', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1282,86 +1398,110 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
       ),
       body: Stack(
         children: [
-          // Black background with camera preview placeholder
+          // Camera preview placeholder
           Container(
             color: Colors.black,
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Camera placeholder
+                  // Alert banner
+                  if (_alert)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF5350),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'ALERT: Many students are lost!',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Live aggregate chips
+                  if (_total > 0)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _AggChip(label: 'Got It', count: _gotIt, color: const Color(0xFF4CAF50)),
+                          _AggChip(label: 'Sort Of', count: _sortOf, color: const Color(0xFFFFC107)),
+                          _AggChip(label: 'Lost', count: _lost, color: const Color(0xFFEF5350)),
+                        ],
+                      ),
+                    ),
+
+                  // Camera preview area
                   Container(
                     width: double.infinity,
-                    height: MediaQuery.of(context).size.height * 0.65,
+                    height: MediaQuery.of(context).size.height * 0.40,
                     decoration: BoxDecoration(
                       color: Colors.grey[900],
-                      border: Border.all(
-                        color: const Color(0xFF2D5BFF),
-                        width: 2,
-                      ),
+                      border: Border.all(color: const Color(0xFF2D5BFF), width: 2),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         if (_isCameraOn)
-                          Icon(
-                            Icons.videocam,
-                            size: 80,
-                            color: const Color(0xFF2D5BFF).withOpacity(0.6),
-                          )
+                          Icon(Icons.videocam, size: 60,
+                              color: const Color(0xFF2D5BFF).withOpacity(0.6))
                         else
-                          Icon(
-                            Icons.videocam_off,
-                            size: 80,
-                            color: Colors.red.withOpacity(0.6),
-                          ),
-                        const SizedBox(height: 16),
+                          Icon(Icons.videocam_off, size: 60, color: Colors.red.withOpacity(0.6)),
+                        const SizedBox(height: 12),
                         Text(
-                          _isCameraOn
-                              ? 'Camera On\nYou are visible to students'
-                              : 'Camera Off\nYou are not visible',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 16,
-                          ),
+                          _isCameraOn ? 'Camera On' : 'Camera Off',
+                          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // Screen Share Preview (if enabled)
-                  if (_isScreenSharing)
+
+                  // Live questions section
+                  if (_questions.isNotEmpty)
                     Container(
                       width: double.infinity,
-                      height: 120,
+                      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.grey[900],
-                        border: Border.all(
-                          color: const Color(0xFF4CAF50),
-                          width: 2,
-                        ),
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey[700]!),
                       ),
-                      child: Center(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.screen_share,
-                              color: const Color(0xFF4CAF50),
-                              size: 40,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Questions (${_questions.where((q) => !q.isAnswered).length} unanswered)',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                          const SizedBox(height: 6),
+                          ...(_questions.take(3).map((q) => _QuestionTile(
+                                question: q,
+                                onMarkAnswered: () async {
+                                  await apiService.markAnswered(
+                                    widget.session.sessionCode,
+                                    q.id,
+                                  );
+                                  final qs = await apiService.getQuestions(widget.session.sessionCode);
+                                  if (mounted) setState(() => _questions = qs);
+                                },
+                              ))),
+                          if (_questions.length > 3)
+                            Text(
+                              '+${_questions.length - 3} more...',
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Screen Sharing Active',
-                              style: TextStyle(
-                                color: Color(0xFF4CAF50),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
                 ],
@@ -1499,35 +1639,7 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
                       Column(
                         children: [
                           GestureDetector(
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('End Class?'),
-                                  content: const Text(
-                                    'Are you sure you want to end the class? All students will be disconnected.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        Navigator.pop(context);
-                                      },
-                                      child: const Text(
-                                        'End Class',
-                                        style:
-                                            TextStyle(color: Colors.red),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+                            onTap: _isEndingSession ? null : _endClass,
                             child: Container(
                               width: 56,
                               height: 56,
@@ -1535,20 +1647,21 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
                                 shape: BoxShape.circle,
                                 color: Color(0xFFEF5350),
                               ),
-                              child: const Icon(
-                                Icons.call_end,
-                                color: Colors.white,
-                                size: 24,
-                              ),
+                              child: _isEndingSession
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(14),
+                                      child: CircularProgressIndicator(
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.call_end, color: Colors.white, size: 24),
                             ),
                           ),
                           const SizedBox(height: 8),
                           const Text(
                             'End Class',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                            ),
+                            style: TextStyle(color: Colors.white, fontSize: 11),
                           ),
                         ],
                       ),
@@ -1563,4 +1676,105 @@ class _TeacherLiveClassroomState extends State<TeacherLiveClassroom> {
     );
   }
 }
+
+
+// --- Aggregate chip widget ---
+
+class _AggChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+
+  const _AggChip({required this.label, required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color, width: 1.5),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$count', style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 18)),
+          Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Question tile widget ---
+
+class _QuestionTile extends StatelessWidget {
+  final Question question;
+  final VoidCallback onMarkAnswered;
+
+  const _QuestionTile({required this.question, required this.onMarkAnswered});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: question.isAnswered ? Colors.green.withOpacity(0.1) : Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: question.isAnswered ? Colors.green : Colors.grey[700]!),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              question.title,
+              style: TextStyle(color: question.isAnswered ? Colors.green[300] : Colors.white, fontSize: 12),
+            ),
+          ),
+          if (!question.isAnswered)
+            GestureDetector(
+              onTap: onMarkAnswered,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFF4CAF50), borderRadius: BorderRadius.circular(6)),
+                child: const Text('Done', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+            )
+          else
+            const Icon(Icons.check_circle, color: Colors.green, size: 16),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Summary row widget ---
+
+class _SummaryRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? color;
+
+  const _SummaryRow({required this.icon, required this.label, required this.value, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? const Color(0xFF2D5BFF);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: c, size: 18),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13))),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: c)),
+        ],
+      ),
+    );
+  }
+}
+
 
